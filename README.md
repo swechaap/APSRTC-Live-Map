@@ -6,6 +6,8 @@ A real-time, interactive live bus tracking platform that reverse-engineers and m
 ![Node.js](https://img.shields.io/badge/Node.js-20+-green?style=for-the-badge&logo=node.js)
 ![Leaflet](https://img.shields.io/badge/Leaflet.js-Interactive%20Maps-10b981?style=for-the-badge&logo=leaflet)
 
+Built using Antigravity
+
 ---
 
 ## 🌟 Key Highlights
