@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>APSRTC Live Bus Tracker — Real-Time Map</title>
+  
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Leaflet MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">
+          <i class="fa-solid fa-bus"></i>
+        </div>
+        <div class="brand-text">
+          <h1>APSRTC <span>Live Track</span></h1>
+          <p class="subtitle">Live GPS Fleet Tracking Map</p>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="searchInput" placeholder="Search Bus No, OPRS, Route, Stop..." />
+          <button id="clearSearch" class="clear-btn" title="Clear search" style="display:none;">&times;</button>
+        </div>
+
+        <div class="filter-group">
+          <select id="depotFilter">
+            <option value="">All Depots</option>
+          </select>
+
+          <select id="typeFilter">
+            <option value="">All Service Types</option>
+          </select>
+        </div>
+
+        <div class="status-pill" id="liveStatus">
+          <span class="pulse-dot"></span>
+          <span id="activeCountText">Loading fleet...</span>
+        </div>
+
+        <button id="refreshBtn" class="action-btn" title="Refresh Live Data">
+          <i class="fa-solid fa-arrows-rotate" id="refreshIcon"></i>
+          <span id="refreshTimer">25s</span>
+        </button>
+
+        <button id="toggleListBtn" class="action-btn secondary" title="Toggle Fleet List">
+          <i class="fa-solid fa-list-ul"></i>
+          <span>Buses</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <div class="main-container">
+      <!-- Interactive Leaflet Map -->
+      <div id="map"></div>
+
+      <!-- Quick Stats Floating Bar -->
+      <div class="floating-stats" id="floatingStats">
+        <div class="stat-card">
+          <span class="stat-val" id="statTotalBuses">-</span>
+          <span class="stat-label">Active Buses</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-card">
+          <span class="stat-val" id="statDepots">-</span>
+          <span class="stat-label">Depots Active</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-card">
+          <span class="stat-val" id="statRoutes">-</span>
+          <span class="stat-label">Routes</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-card">
+          <span class="stat-val" id="statLastSync">--:--</span>
+          <span class="stat-label">Last Synced</span>
+        </div>
+      </div>
+
+      <!-- Floating Map Bus Colors Legend -->
+      <div class="map-legend" id="mapLegend">
+        <div class="legend-header" id="toggleLegendBtn" title="Click to collapse / expand bus colors">
+          <span class="legend-title"><i class="fa-solid fa-palette"></i> Bus Types &amp; Colors</span>
+          <i class="fa-solid fa-chevron-down legend-toggle-icon"></i>
+        </div>
+        <div class="legend-items" id="legendItems">
+          <div class="legend-item"><span class="legend-dot" style="background:#dc2626;"></span> City Ordinary (Red)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#2563eb;"></span> Metro Express (Blue)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#16a34a;"></span> Palle Velugu (Green)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#ea580c;"></span> Express (Orange)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#7c3aed;"></span> Super Luxury (Purple)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#0891b2;"></span> Ultra Deluxe (Teal)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#ca8a04;"></span> Saptagiri (Yellow)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#0284c7;"></span> Indra AC (Sky Blue)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#b45309;"></span> Amaravathi / Garuda (Gold)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#059669;"></span> Green EV (Emerald)</div>
+        </div>
+      </div>
+
+      <!-- Left Drawer: Fleet Directory -->
+      <aside class="side-drawer left" id="fleetDrawer">
+        <div class="drawer-header">
+          <div class="drawer-title">
+            <i class="fa-solid fa-bus-simple"></i>
+            <h2>Live Fleet (<span id="drawerCount">0</span>)</h2>
+          </div>
+          <button class="close-drawer-btn" id="closeFleetDrawer">&times;</button>
+        </div>
+        <div class="drawer-content" id="busListContainer">
+          <div class="loading-state">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <p>Fetching active buses...</p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Right Drawer: Bus Details & Route Path -->
+      <aside class="side-drawer right" id="busDetailDrawer">
+        <div class="drawer-header">
+          <div class="drawer-title">
+            <i class="fa-solid fa-circle-info"></i>
+            <h2>Bus Details</h2>
+          </div>
+          <button class="close-drawer-btn" id="closeDetailDrawer">&times;</button>
+        </div>
+        <div class="drawer-content" id="busDetailContent">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet MarkerCluster JS -->
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  
+  <script src="app.js"></script>
+</body>
+</html>
+
