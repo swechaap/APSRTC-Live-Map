@@ -31,7 +31,7 @@ A real-time, interactive live bus tracking platform that reverse-engineers and m
 Navigate to the project directory and start the server:
 
 ```bash
-cd /Users/chandu/.gemini/antigravity/scratch/apsrtc-live-bus-tracker
+cd /apsrtc-live-map
 npm start
 ```
 
