@@ -3,9 +3,66 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>APSRTC Live Bus Tracker — Real-Time Map</title>
   
-  <!-- Google Fonts: Inter -->
+  <!-- Primary Meta Tags & Google SEO -->
+  <title>APSRTC Live Bus Tracker — Real-Time GPS Fleet Tracking Map</title>
+  <meta name="title" content="APSRTC Live Bus Tracker — Real-Time GPS Fleet Tracking Map" />
+  <meta name="description" content="Track APSRTC buses live across Andhra Pradesh in real time on an interactive map. View live GPS locations, vehicle speed, routes, stops, OPRS numbers, and arrival ETAs across all AP depots." />
+  <meta name="keywords" content="APSRTC live track, APSRTC live bus tracking, APSRTC bus tracker, APSRTC bus live location, APSRTC GPS tracking, live bus tracking, bus tracking AP, APSRTC online bus tracking, APSRTC live status, RTC bus tracking, APSRTC route tracking, Andhra Pradesh bus tracker, Vijayawada bus tracking, Tirupati bus tracking, Visakhapatnam bus tracking, Guntur bus tracking" />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+  <meta name="author" content="APSRTC Live Bus Tracker" />
+  <meta name="application-name" content="APSRTC Live Track" />
+  <meta name="theme-color" content="#b91c1c" />
+  <link rel="canonical" href="https://apsrtclivetrack.com/" />
+
+  <!-- Open Graph / Facebook / WhatsApp / Telegram -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://apsrtclivetrack.com/" />
+  <meta property="og:title" content="APSRTC Live Bus Tracker — Real-Time GPS Fleet Tracking Map" />
+  <meta property="og:description" content="Track APSRTC buses live across Andhra Pradesh on an interactive map. Real-time GPS movement, vehicle speeds, route tracing, and stop-by-stop ETAs." />
+  <meta property="og:image" content="/favicon.svg" />
+  <meta property="og:site_name" content="APSRTC Live Bus Tracker" />
+  <meta property="og:locale" content="en_IN" />
+
+  <!-- Twitter Card Tags -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="APSRTC Live Bus Tracker — Real-Time GPS Fleet Tracking Map" />
+  <meta name="twitter:description" content="Track APSRTC buses live across Andhra Pradesh on an interactive map. Real-time GPS movement, vehicle speeds, route tracing, and stop-by-stop ETAs." />
+  <meta name="twitter:image" content="/favicon.svg" />
+
+  <!-- Favicon & Mobile Icons -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="alternate icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="apple-touch-icon" href="favicon.svg" />
+
+  <!-- Google Structured Data (Schema.org JSON-LD for Search Engine Feed & Rich Snippets) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "APSRTC Live Bus Tracker",
+    "alternateName": ["APSRTC Live Track", "APSRTC Bus Tracker", "APSRTC GPS Live Tracking"],
+    "url": "https://apsrtclivetrack.com/",
+    "applicationCategory": "TravelApplication",
+    "operatingSystem": "All",
+    "description": "Real-time interactive live tracking of APSRTC buses across Andhra Pradesh. Track bus live GPS location, OPRS service numbers, speed, routes, and ETAs.",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "INR"
+    },
+    "featureList": [
+      "Live GPS Bus Tracking across Andhra Pradesh",
+      "Real-time vehicle speed and compass heading telemetry",
+      "Search by Bus Registration Number, OPRS Service, Route, or Depot",
+      "Interactive Leaflet route polyline and waypoint stops map",
+      "Depot and Service Type filtering (City Ordinary, Express, Super Luxury, EV, etc.)",
+      "Auto-updating live arrival and departure ETAs"
+    ]
+  }
+  </script>
+  
+  <!-- Google Fonts: Inter & Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -20,18 +77,141 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 
   <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Developed By Section */
+.developed-by-section {
+  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  padding-top: 20px;
+}
+
+.developer-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  margin-top: 15px;
+}
+
+.developer-logo {
+  flex-shrink: 0;
+}
+
+.swecha-logo {
+  width: 85px;
+  height: 85px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.developer-content {
+  flex: 1;
+}
+
+.developer-content h4 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.developer-content p {
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+
+.developer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.developer-links a {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.developer-links a:hover {
+  text-decoration: underline;
+}
+
+/* Volunteer CTA */
+.volunteer-cta {
+  margin-top: 22px;
+  padding: 18px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.07);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.volunteer-cta h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.volunteer-cta p {
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+.volunteer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 16px;
+  background: #2563eb;
+  color: #fff !important;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.volunteer-btn:hover {
+  background: #1d4ed8;
+  transform: translateY(-2px);
+}
+
+@media (max-width: 480px) {
+  .developer-info {
+    flex-direction: column;
+  }
+
+  .swecha-logo {
+    width: 70px;
+    height: 70px;
+  }
+
+  .developer-links {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+  </style>
 </head>
 <body>
   <div id="app">
     <!-- Top Navigation Header -->
     <header class="app-header">
-      <div class="brand">
-        <div class="logo-icon">
-          <i class="fa-solid fa-bus"></i>
+      <div class="header-top-bar">
+        <div class="brand">
+          <div class="logo-icon">
+            <i class="fa-solid fa-bus"></i>
+          </div>
+          <div class="brand-text">
+            <h1>APSRTC <span>Live Track</span></h1>
+            <p class="subtitle">by Swecha AP</p>
+          </div>
         </div>
-        <div class="brand-text">
-          <h1>APSRTC <span>Live Track</span></h1>
-          <p class="subtitle">Live GPS Fleet Tracking Map</p>
+
+        <div class="header-actions">
+          <button id="toggleListBtn" class="action-btn secondary" title="Toggle Fleet List">
+            <i class="fa-solid fa-list-ul"></i>
+            <span>Buses</span>
+          </button>
+
+          <button id="infoBtn" class="action-btn secondary icon-btn" title="About APSRTC Live Bus Tracker" aria-label="About Information">
+            <i class="fa-solid fa-circle-info"></i>
+          </button>
         </div>
       </div>
 
@@ -52,25 +232,18 @@
           </select>
         </div>
 
-        <div class="status-pill" id="liveStatus">
-          <span class="pulse-dot"></span>
-          <span id="activeCountText">Loading fleet...</span>
-        </div>
-
-        <button id="refreshBtn" class="action-btn" title="Refresh Live Data">
+        <button id="refreshBtn" class="action-btn" title="Refresh Live Data" style="display: none;">
           <i class="fa-solid fa-arrows-rotate" id="refreshIcon"></i>
           <span id="refreshTimer">25s</span>
-        </button>
-
-        <button id="toggleListBtn" class="action-btn secondary" title="Toggle Fleet List">
-          <i class="fa-solid fa-list-ul"></i>
-          <span>Buses</span>
         </button>
       </div>
     </header>
 
     <!-- Main Content Area -->
     <div class="main-container">
+      <!-- Dark backdrop for drawers on mobile/tablet -->
+      <div class="drawer-backdrop" id="drawerBackdrop"></div>
+
       <!-- Interactive Leaflet Map -->
       <div id="map"></div>
 
@@ -124,8 +297,29 @@
             <i class="fa-solid fa-bus-simple"></i>
             <h2>Live Fleet (<span id="drawerCount">0</span>)</h2>
           </div>
-          <button class="close-drawer-btn" id="closeFleetDrawer">&times;</button>
+          <button class="close-drawer-btn" id="closeFleetDrawer" aria-label="Close fleet list">&times;</button>
         </div>
+        
+        <!-- Mobile & Compact Fleet Stats Strip -->
+        <div class="drawer-stats-summary" id="drawerStatsSummary">
+          <div class="d-stat">
+            <span class="d-stat-val" id="drawerStatBuses">-</span>
+            <span class="d-stat-lbl">Active</span>
+          </div>
+          <div class="d-stat">
+            <span class="d-stat-val" id="drawerStatDepots">-</span>
+            <span class="d-stat-lbl">Depots</span>
+          </div>
+          <div class="d-stat">
+            <span class="d-stat-val" id="drawerStatRoutes">-</span>
+            <span class="d-stat-lbl">Routes</span>
+          </div>
+          <div class="d-stat">
+            <span class="d-stat-val" id="drawerStatSync">--:--</span>
+            <span class="d-stat-lbl">Synced</span>
+          </div>
+        </div>
+
         <div class="drawer-content" id="busListContainer">
           <div class="loading-state">
             <i class="fa-solid fa-spinner fa-spin"></i>
@@ -149,6 +343,134 @@
       </aside>
     </div>
   </div>
+
+  <!-- About / Info Modal Popup -->
+  <div class="modal-backdrop" id="infoModalBackdrop" style="display: none;" aria-hidden="true">
+    <div class="modal-card" id="infoModalCard" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-logo-icon">
+            <i class="fa-solid fa-bus"></i>
+          </div>
+          <div>
+            <h2 id="modalTitle">APSRTC Live Track</h2>
+            <p class="modal-subtitle">Real-Time Fleet Intelligence &amp; GPS Transit Map</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closeInfoModal" title="Close" aria-label="Close modal">&times;</button>
+      </div>
+      
+      <div class="modal-body">
+        <section class="modal-section">
+          <h3><i class="fa-solid fa-circle-question"></i> About This Platform</h3>
+          <p>
+            Welcome to <strong>APSRTC Live Track</strong>, a real-time, interactive bus tracking and transit intelligence platform.
+            This application tracks thousands of active buses running across all major depots in Andhra Pradesh.
+          </p>
+        </section>
+
+        <!-- Developed By Section -->
+        <section class="modal-section developed-by-section">
+          <h3><i class="fa-solid fa-code"></i> Developed By</h3>
+
+          <div class="developer-info">
+            <div class="developer-logo">
+              <img
+                src="https://swecha.org/sites/default/files/2021-05/Swecha.png"
+                alt="Swecha AP Logo"
+                class="swecha-logo"
+              />
+            </div>
+
+            <div class="developer-content">
+              <h4>Swecha Andhra Pradesh</h4>
+              <p>
+                This tool is developed by <strong>Swecha AP</strong>,
+                a community-driven initiative working towards building
+                technology for society. We believe in the power
+                of free software, open knowledge, collaboration, and
+                community-driven innovation to create technology that
+                empowers people and serves their needs.
+              </p>
+
+              <div class="developer-links">
+                <a href="https://swechaap.org/" target="_blank" rel="noopener noreferrer">
+                  <i class="fa-solid fa-globe"></i> Swecha AP Website
+                </a>
+
+                <a href="https://code.swecha.org/apcc/apsrtc-live-map" target="_blank" rel="noopener noreferrer">
+                  <i class="fa-brands fa-gitlab"></i> Project Source Code
+                </a>
+                <a
+                  href="https://www.swechaap.org/volunteer/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <i class="fa-solid fa-heart"></i> Become a Volunteer
+                  <i class="fa-solid fa-arrow-right"></i>
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="modal-section">
+          <h3><i class="fa-solid fa-bolt"></i> Key Features</h3>
+          <ul class="modal-feature-list">
+            <li>
+              <strong><i class="fa-solid fa-satellite-dish" style="color: #10b981;"></i> Pinpoint Live GPS:</strong>
+              Streams real-time coordinates, speed, and heading angle directly from vehicle transponders.
+            </li>
+            <li>
+              <strong><i class="fa-solid fa-route" style="color: #06b6d4;"></i> Complete Route Tracing:</strong>
+              Click any bus to inspect stop-by-stop waypoints, arrival &amp; departure timestamps, and estimated arrival times (ETAs).
+            </li>
+            <li>
+              <strong><i class="fa-solid fa-magnifying-glass" style="color: #3b82f6;"></i> Smart Search &amp; Filters:</strong>
+              Quickly find any bus by Vehicle Registration Number, OPRS Service Number, Route Name, or filter by Depot and Service Category.
+            </li>
+            <li>
+              <strong><i class="fa-solid fa-clock-rotate-left" style="color: #a855f7;"></i> Seamless Background Sync:</strong>
+              The system automatically polls for live fleet updates every 25 seconds in the background.
+            </li>
+          </ul>
+        </section>
+
+        <section class="modal-section">
+          <h3><i class="fa-solid fa-traffic-light"></i> Status &amp; Tracking Indicators</h3>
+          <div class="modal-status-legend">
+            <div class="modal-legend-row">
+              <span class="legend-badge live"><i class="fa-solid fa-circle-dot"></i> Live GPS Fix</span>
+              <span>Vehicle transponder is active, moving, and reporting live telemetry.</span>
+            </div>
+            <div class="modal-legend-row">
+              <span class="legend-badge estimate"><i class="fa-solid fa-location-dot"></i> Station Estimate</span>
+              <span>Position calculated based on scheduled boarding stop while awaiting satellite lock.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="modal-section note">
+          <p class="modal-note-text">
+            <i class="fa-solid fa-circle-info"></i>
+            <strong>Note:</strong> This service is an independent transit tracking initiative designed to help passengers, commuters, and transit researchers visualize live public transit data across Andhra Pradesh. This is not affiliated with APSRTC.
+          </p>
+        </section>
+      </div>
+
+      <div class="modal-footer">
+        <button class="action-btn secondary modal-action-close" id="modalDismissBtn">
+          Close
+        </button>
+      </div>
+      </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="action-btn secondary modal-action-close" id="modalDismissBtn">Got it</button>
+      </div>
+    </div>
+  </div> 
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

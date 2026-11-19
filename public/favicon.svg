@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#b91c1c"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#brandGrad)"/>
+  <g transform="translate(12, 12) scale(0.078125)" fill="#ffffff">
+    <path d="M112 0C76.7 0 48 28.7 48 64V384c0 29.7 20.3 54.6 48 61.8V480c0 17.7 14.3 32 32 32s32-14.3 32-32V448H352v32c0 17.7 14.3 32 32 32s32-14.3 32-32V445.8c27.7-7.2 48-32.2 48-61.8V64c0-35.3-28.7-64-64-64H112zm48 416a32 32 0 1 1 0-64 32 32 0 1 1 0 64zm192-32a32 32 0 1 1 64 0 32 32 0 1 1 -64 0zM96 128H416v160H96V128zM176 64h160c8.8 0 16 7.2 16 16s-7.2 16-16 16H176c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/>
+  </g>
+</svg>

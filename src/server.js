@@ -23,7 +23,9 @@ const MIME_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon'
+  '.ico': 'image/x-icon',
+  '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8'
 };
 
 function sendJson(res, statusCode, data) {
@@ -43,6 +45,14 @@ function serveStatic(req, res, pathname) {
   if (!filePath.startsWith(PUBLIC_DIR)) {
     res.writeHead(403);
     return res.end('Forbidden');
+  }
+
+  // Favicon fallback: if /favicon.ico is requested and doesn't exist, serve favicon.svg
+  if (pathname === '/favicon.ico' && !fs.existsSync(filePath)) {
+    const svgPath = path.join(PUBLIC_DIR, 'favicon.svg');
+    if (fs.existsSync(svgPath)) {
+      filePath = svgPath;
+    }
   }
 
   fs.stat(filePath, (err, stats) => {

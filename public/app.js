@@ -166,24 +166,61 @@ function setupEventListeners() {
   });
   typeFilter.addEventListener('change', applyFilters);
 
-  refreshBtn.addEventListener('click', () => {
-    triggerManualRefresh();
-  });
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      triggerManualRefresh();
+    });
+  }
 
-  toggleListBtn.addEventListener('click', () => {
-    document.getElementById('fleetDrawer').classList.toggle('open');
-  });
+  // Drawer & State controls
+  const fleetDrawer = document.getElementById('fleetDrawer');
+  const busDetailDrawer = document.getElementById('busDetailDrawer');
 
-  closeFleetDrawer.addEventListener('click', () => {
-    document.getElementById('fleetDrawer').classList.remove('open');
-  });
+  function syncDrawerState() {
+    const isAnyOpen = (fleetDrawer && fleetDrawer.classList.contains('open')) ||
+                      (busDetailDrawer && busDetailDrawer.classList.contains('open'));
+    if (isAnyOpen) {
+      document.body.classList.add('drawer-open');
+    } else {
+      document.body.classList.remove('drawer-open');
+    }
+  }
 
-  closeDetailDrawer.addEventListener('click', () => {
-    document.getElementById('busDetailDrawer').classList.remove('open');
-    clearRouteLayers();
-    stopSelectedBusLivePoll();
-    selectedBus = null;
-  });
+  function closeAllDrawers() {
+    if (fleetDrawer) fleetDrawer.classList.remove('open');
+    if (busDetailDrawer) {
+      busDetailDrawer.classList.remove('open');
+      clearRouteLayers();
+      stopSelectedBusLivePoll();
+      selectedBus = null;
+    }
+    syncDrawerState();
+  }
+
+  if (toggleListBtn) {
+    toggleListBtn.addEventListener('click', () => {
+      if (fleetDrawer) {
+        fleetDrawer.classList.toggle('open');
+        if (fleetDrawer.classList.contains('open') && busDetailDrawer) {
+          busDetailDrawer.classList.remove('open');
+        }
+      }
+      syncDrawerState();
+    });
+  }
+
+  if (closeFleetDrawer) {
+    closeFleetDrawer.addEventListener('click', () => {
+      if (fleetDrawer) fleetDrawer.classList.remove('open');
+      syncDrawerState();
+    });
+  }
+
+  if (closeDetailDrawer) {
+    closeDetailDrawer.addEventListener('click', () => {
+      closeAllDrawers();
+    });
+  }
 
   // Listen for hash changes (e.g. user navigating to #/trip_details?... or #/track?...)
   window.addEventListener('hashchange', () => {
@@ -194,10 +231,73 @@ function setupEventListeners() {
   const toggleLegendBtn = document.getElementById('toggleLegendBtn');
   const mapLegend = document.getElementById('mapLegend');
   if (toggleLegendBtn && mapLegend) {
-    toggleLegendBtn.addEventListener('click', () => {
-      mapLegend.classList.toggle('collapsed');
+    toggleLegendBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.matchMedia('(max-width: 768px)').matches) {
+        mapLegend.classList.toggle('open-mobile');
+      } else {
+        mapLegend.classList.toggle('collapsed');
+      }
+    });
+
+    // On mobile, tapping outside the open legend collapses it back
+    document.addEventListener('click', (e) => {
+      if (window.matchMedia('(max-width: 768px)').matches) {
+        if (mapLegend.classList.contains('open-mobile') && !mapLegend.contains(e.target)) {
+          mapLegend.classList.remove('open-mobile');
+        }
+      }
     });
   }
+
+  // About / Info Modal controls
+  const infoBtn = document.getElementById('infoBtn');
+  const infoModalBackdrop = document.getElementById('infoModalBackdrop');
+  const closeInfoModal = document.getElementById('closeInfoModal');
+  const modalDismissBtn = document.getElementById('modalDismissBtn');
+
+  function openInfoPopup() {
+    if (!infoModalBackdrop) return;
+    infoModalBackdrop.style.display = 'flex';
+    // Force reflow for smooth transition
+    void infoModalBackdrop.offsetWidth;
+    infoModalBackdrop.classList.add('open');
+    infoModalBackdrop.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeInfoPopup() {
+    if (!infoModalBackdrop) return;
+    infoModalBackdrop.classList.remove('open');
+    infoModalBackdrop.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+      if (!infoModalBackdrop.classList.contains('open')) {
+        infoModalBackdrop.style.display = 'none';
+      }
+    }, 220);
+  }
+
+  if (infoBtn) {
+    infoBtn.addEventListener('click', openInfoPopup);
+  }
+  if (closeInfoModal) {
+    closeInfoModal.addEventListener('click', closeInfoPopup);
+  }
+  if (modalDismissBtn) {
+    modalDismissBtn.addEventListener('click', closeInfoPopup);
+  }
+  if (infoModalBackdrop) {
+    infoModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === infoModalBackdrop) {
+        closeInfoPopup();
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && infoModalBackdrop && infoModalBackdrop.classList.contains('open')) {
+      closeInfoPopup();
+    }
+  });
 }
 
 /**
@@ -267,7 +367,7 @@ async function checkUrlParamsForTracking() {
 
 async function fetchLiveBuses(silent = false) {
   const statusText = document.getElementById('activeCountText');
-  if (!silent) statusText.innerText = 'Syncing live fleet...';
+  if (statusText && !silent) statusText.innerText = 'Syncing live fleet...';
 
   try {
     const res = await fetch('/api/buses/live');
@@ -276,15 +376,19 @@ async function fetchLiveBuses(silent = false) {
     if (data.success && Array.isArray(data.buses)) {
       allBuses = data.buses;
       const liveGpsCount = allBuses.filter(b => b.isLiveGps).length;
-      statusText.innerText = `${allBuses.length} Buses (${liveGpsCount} Live GPS Fixes)`;
-      document.getElementById('statTotalBuses').innerText = allBuses.length;
+      if (statusText) statusText.innerText = `${allBuses.length} Buses (${liveGpsCount} Live GPS Fixes)`;
+      const statTotalBuses = document.getElementById('statTotalBuses');
+      if (statTotalBuses) statTotalBuses.innerText = allBuses.length;
+
+      const drawerBuses = document.getElementById('drawerStatBuses');
+      if (drawerBuses) drawerBuses.innerText = allBuses.length;
 
       populateFilterDropdowns();
       applyFilters();
     }
   } catch (err) {
     console.error('Failed to fetch buses:', err);
-    statusText.innerText = 'Sync failed. Retrying...';
+    if (statusText) statusText.innerText = 'Sync failed. Retrying...';
   }
 }
 
@@ -293,11 +397,26 @@ async function fetchStats() {
     const res = await fetch('/api/buses/stats');
     const data = await res.json();
     if (data.success && data.stats) {
-      document.getElementById('statDepots').innerText = data.stats.depotsCount || '-';
-      document.getElementById('statRoutes').innerText = data.stats.routesCount || '-';
-      if (data.stats.lastSync) {
-        const d = new Date(data.stats.lastSync);
-        document.getElementById('statLastSync').innerText = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const s = data.stats;
+      const statDepots = document.getElementById('statDepots');
+      if (statDepots) statDepots.innerText = s.depotsCount || '-';
+      const statRoutes = document.getElementById('statRoutes');
+      if (statRoutes) statRoutes.innerText = s.routesCount || '-';
+
+      const drawerDepots = document.getElementById('drawerStatDepots');
+      if (drawerDepots) drawerDepots.innerText = s.depotsCount || '-';
+      const drawerRoutes = document.getElementById('drawerStatRoutes');
+      if (drawerRoutes) drawerRoutes.innerText = s.routesCount || '-';
+      const drawerBuses = document.getElementById('drawerStatBuses');
+      if (drawerBuses && s.totalActive) drawerBuses.innerText = s.totalActive;
+
+      if (s.lastSync) {
+        const d = new Date(s.lastSync);
+        const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const statLastSync = document.getElementById('statLastSync');
+        if (statLastSync) statLastSync.innerText = timeStr;
+        const drawerSync = document.getElementById('drawerStatSync');
+        if (drawerSync) drawerSync.innerText = timeStr;
       }
     }
   } catch (err) {
@@ -587,10 +706,28 @@ function selectBus(bus, flyTo = true) {
   stopSelectedBusLivePoll();
 
   const drawer = document.getElementById('busDetailDrawer');
-  drawer.classList.add('open');
+  if (drawer) drawer.classList.add('open');
+
+  // Close fleet drawer on mobile if open so drawers don't stack
+  const fleetDrawer = document.getElementById('fleetDrawer');
+  if (window.innerWidth <= 768 && fleetDrawer) {
+    fleetDrawer.classList.remove('open');
+  }
+
+  // Update body drawer-open class for responsive layout adjustments
+  document.body.classList.add('drawer-open');
 
   if (flyTo && bus.lat && bus.lng) {
-    map.flyTo([bus.lat, bus.lng], 14, { duration: 1.2 });
+    if (window.innerWidth <= 768) {
+      // In mobile half-sheet view, offset the center so the bus marker is placed in the top visible half of the map
+      const mapHeight = map.getSize ? map.getSize().y : window.innerHeight;
+      const targetPoint = map.project([bus.lat, bus.lng], 14);
+      const offsetPoint = L.point(targetPoint.x, targetPoint.y + Math.round(mapHeight * 0.22));
+      const targetLatLng = map.unproject(offsetPoint, 14);
+      map.flyTo(targetLatLng, 14, { duration: 1.0 });
+    } else {
+      map.flyTo([bus.lat, bus.lng], 14, { duration: 1.2 });
+    }
   }
 
   updateBusDetailDrawerUI(bus);
@@ -668,7 +805,7 @@ function updateBusDetailDrawerUI(bus) {
 
       <div class="detail-card">
         <div class="detail-card-label">Driver Contact</div>
-        <div class="detail-card-val">${bus.driverMobile ? `<a href="tel:${bus.driverMobile}" style="color:#38bdf8;text-decoration:none;">${bus.driverMobile}</a>` : 'Not Available'}</div>
+        <div class="detail-card-val">${bus.driverMobile ? `<a href="tel:${bus.driverMobile}" style="color:#f87171;text-decoration:none;font-weight:600;">${bus.driverMobile}</a>` : 'Not Available'}</div>
       </div>
 
       <div class="detail-card highlight">
@@ -797,11 +934,11 @@ window.traceFullRoute = async function(serviceDocId) {
     // Clear any previous route layers
     clearRouteLayers();
 
-    // Draw route polyline with bright cyan line
+    // Draw route polyline with bright red theme line
     routePolylineLayer = L.polyline(polyline, {
-      color: '#06b6d4',
+      color: '#ef4444',
       weight: 5,
-      opacity: 0.85,
+      opacity: 0.9,
       lineCap: 'round',
       lineJoin: 'round'
     }).addTo(map);
@@ -833,8 +970,16 @@ window.traceFullRoute = async function(serviceDocId) {
       routeStopsLayerGroup.addLayer(circle);
     });
 
-    // Fit map bounds to show full route
-    map.fitBounds(routePolylineLayer.getBounds(), { padding: [50, 50] });
+    // Fit map bounds to show full route (offset for mobile half-screen bottom sheet)
+    if (window.innerWidth <= 768) {
+      const mapHeight = map.getSize ? map.getSize().y : window.innerHeight;
+      map.fitBounds(routePolylineLayer.getBounds(), {
+        paddingTopLeft: [20, 20],
+        paddingBottomRight: [20, Math.round(mapHeight * 0.52)]
+      });
+    } else {
+      map.fitBounds(routePolylineLayer.getBounds(), { padding: [50, 50] });
+    }
 
     // Add prominent real-time bus marker on the route
     if (selectedBus && selectedBus.lat && selectedBus.lng) {
