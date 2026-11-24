@@ -1,15 +1,36 @@
-const dotenv = require('dotenv');
+const fs = require('fs');
 const path = require('path');
 
-// Load environment variables first (locally from .env; on Render from the Environment tab)
-dotenv.config({
-    path: path.resolve(__dirname, '../.env')
-});
+// Load environment variables locally from .env if present
+const envPath = path.resolve(__dirname, '../.env');
+if (fs.existsSync(envPath)) {
+  try {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const idx = trimmed.indexOf('=');
+        if (idx !== -1) {
+          const key = trimmed.slice(0, idx).trim();
+          let val = trimmed.slice(idx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          if (process.env[key] === undefined) {
+            process.env[key] = val;
+          }
+        }
+      }
+    });
+  } catch (e) {
+    console.warn('Could not read .env file:', e.message);
+  }
+}
 
 const http = require('http');
-const fs = require('fs');
 
 const busTracker = require('./services/busTracker');
+const routeCatalog = require('./services/routeCatalog');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, '../public');
@@ -90,8 +111,6 @@ const server = http.createServer(async (req, res) => {
   try {
     // API Endpoints
     // CARTO Map Configuration
-    // Returns an empty key (instead of an error) when CARTO_API_KEY is not set,
-    // because CARTO Voyager tiles also work without a key.
     if (pathname === '/api/config' && req.method === 'GET') {
       return sendJson(res, 200, {
         success: true,
@@ -120,8 +139,55 @@ const server = http.createServer(async (req, res) => {
         success: true,
         count: buses.length,
         lastSync: busTracker.lastSync,
+        filters: busTracker.getKnownFilters(),
         buses
       });
+    }
+
+    if (pathname === '/api/stops' && req.method === 'GET') {
+      const search = (query.search || '').trim();
+      if (search.length < 2) {
+        return sendJson(res, 400, { success: false, error: 'Enter at least 2 characters' });
+      }
+      return sendJson(res, 200, { success: true, stops: busTracker.searchStops(search) });
+    }
+
+    if (pathname === '/api/routes' && req.method === 'GET') {
+      const limit = Math.min(Math.max(Number(query.limit) || 40, 1), 100);
+      const result = routeCatalog.search(query.q || '', { city: query.city || '', kind: query.kind || '', limit });
+      return sendJson(res, 200, { success: true, cities: routeCatalog.cities, ...result });
+    }
+
+    if (pathname === '/api/routes/detail' && req.method === 'GET') {
+      const route = routeCatalog.get(query.id || '');
+      if (!route) return sendJson(res, 404, { success: false, error: 'Route not found' });
+      const { noKey, nameKey, ...detail } = route;
+      return sendJson(res, 200, {
+        success: true,
+        route: detail,
+        liveBuses: routeCatalog.matchLiveBuses(route, busTracker.getActiveBuses())
+      });
+    }
+
+    if (pathname === '/api/stops/nearby' && req.method === 'GET') {
+      const lat = Number(query.lat);
+      const lng = Number(query.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        return sendJson(res, 400, { success: false, error: 'Invalid location' });
+      }
+      return sendJson(res, 200, { success: true, stops: busTracker.nearbyStops(lat, lng) });
+    }
+
+    if (pathname === '/api/stops/buses' && req.method === 'GET') {
+      const buses = busTracker.getStopBuses(query.id || '');
+      if (!buses) return sendJson(res, 400, { success: false, error: 'Select a valid stop' });
+      return sendJson(res, 200, { success: true, count: buses.length, buses });
+    }
+
+    if (pathname === '/api/buses/between' && req.method === 'GET') {
+      const buses = busTracker.getBusesBetweenStops(query.from || '', query.to || '');
+      if (!buses) return sendJson(res, 400, { success: false, error: 'Select two different valid stops' });
+      return sendJson(res, 200, { success: true, count: buses.length, buses });
     }
 
     if (pathname === '/api/buses/stats' && req.method === 'GET') {
@@ -173,6 +239,7 @@ async function main() {
     console.log('====================================================');
     console.log('   APSRTC Live Bus Tracker — Starting Server');
     console.log('====================================================');
+    routeCatalog.load();
     await busTracker.init();
     busTracker.startPolling(25000); // Poll every 25 seconds
 

@@ -5,9 +5,6 @@ const MAP_CONFIG = {
   // Provider options: 'carto' (Default), 'osm', 'google', 'mapbox', 'maptiler'
   provider: 'carto',
 
-  // The CARTO key is NOT stored here. It is loaded from the server (/api/config),
-  // which reads it from the CARTO_API_KEY environment variable (.env locally,
-  // Render's Environment tab when hosted).
   cartoApiKey: '',
 
   // CARTO Style options: 'voyager' (colorful), 'dark_matter' (dark theme), 'positron' (light theme)
@@ -49,10 +46,16 @@ let liveBusMarkerOnRoute = null;
 let selectedBusLiveTimer = null;
 
 let allBuses = [];
+let knownFilters = { depots: [], serviceTypes: [] };
 let filteredBuses = [];
 let selectedBus = null;
 let refreshCountdown = 25;
 let countdownTimer = null;
+let riderFilter = null;
+let riderRequestVersion = 0;
+let riderStopMarker = null;
+let updateRiderFilter;
+let saveRecentSearch = () => {};
 
 // Andhra Pradesh coordinates center
 const AP_CENTER = [16.3067, 80.4365];
@@ -137,6 +140,14 @@ function setupEventListeners() {
   const closeFleetDrawer = document.getElementById('closeFleetDrawer');
   const closeDetailDrawer = document.getElementById('closeDetailDrawer');
 
+  setupRiderSearch();
+  setupRoutes();
+
+  const filtersToggle = document.getElementById('filtersToggle');
+  filtersToggle.addEventListener('click', () => {
+    const open = document.getElementById('filterGroup').classList.toggle('open');
+    filtersToggle.setAttribute('aria-expanded', String(open));
+  });
   searchInput.addEventListener('input', (e) => {
     const val = e.target.value.trim();
     clearBtn.style.display = val ? 'block' : 'none';
@@ -172,6 +183,468 @@ function setupEventListeners() {
     });
   }
 
+  function setupRoutes() {
+    const panel = document.getElementById('routesPanel');
+    const toggle = document.getElementById('routesBtn');
+    const input = document.getElementById('routeQuery');
+    const chips = document.getElementById('routeCityChips');
+    const status = document.getElementById('routeStatus');
+    const results = document.getElementById('routeResults');
+    const listView = document.getElementById('routesListView');
+    const detailView = document.getElementById('routeDetailView');
+    const detailBody = document.getElementById('routeDetailBody');
+    let city = '';
+    let timer = null;
+    let version = 0;
+    let loadedCities = false;
+    let currentRoute = null;
+    let detailTimer = null;
+
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    function setOpen(open) {
+      if (open) {
+        const rider = document.getElementById('riderSearchPanel');
+        rider.hidden = true;
+        document.getElementById('riderSearchBtn').setAttribute('aria-expanded', 'false');
+        document.getElementById('fleetDrawer').classList.remove('open');
+        document.getElementById('busDetailDrawer').classList.remove('open');
+        document.body.classList.remove('drawer-open');
+        document.getElementById('toggleListBtn').setAttribute('aria-expanded', 'false');
+        stopSelectedBusLivePoll();
+        selectedBus = null;
+        if (!loadedCities) search();
+      } else {
+        stopDetailRefresh();
+      }
+      panel.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+    }
+    window.closeRoutesPanel = () => setOpen(false);
+
+    function renderChips(cities) {
+      const items = [{ name: '', label: 'All' }, ...cities.map(c => ({ name: c.name, label: c.name }))];
+      chips.innerHTML = items.map(c =>
+        `<button type="button" data-city="${esc(c.name)}" class="${c.name === city ? 'active' : ''}">${esc(c.label)}</button>`
+      ).join('');
+    }
+
+    async function search() {
+      const v = ++version;
+      status.textContent = 'Searching routes...';
+      try {
+        const params = new URLSearchParams({ q: input.value.trim(), city });
+        const res = await fetch(`/api/routes?${params}`);
+        const data = await res.json();
+        if (v !== version) return;
+        if (!data.success) throw new Error('bad response');
+        if (!loadedCities) { loadedCities = true; renderChips(data.cities); }
+        status.textContent = data.total
+          ? `${data.total} route${data.total === 1 ? '' : 's'}${data.total > data.routes.length ? ` (showing ${data.routes.length})` : ''}`
+          : 'No routes found. Try a route number like 28A or a place name.';
+        results.innerHTML = data.routes.map(r => `
+          <li><button type="button" data-id="${esc(r.id)}">
+            <span class="route-no ${r.kind === 'City' ? 'city' : ''}">${esc(r.no)}</span>
+            <span class="route-info">
+              <strong>${esc(r.name)}</strong>
+              <small>${esc(r.city ? `${r.city} · ` : '')}${esc(r.type || r.kind)} · ${r.trips} trips/day</small>
+            </span>
+          </button></li>`).join('');
+      } catch (err) {
+        if (v !== version) return;
+        status.textContent = 'Could not load routes. Please try again.';
+      }
+    }
+
+    function stopDetailRefresh() {
+      if (detailTimer) clearInterval(detailTimer);
+      detailTimer = null;
+    }
+
+    function drawRoute(route, liveBuses, fit) {
+      clearRouteLayers();
+      const line = route.shape.length > 1 ? route.shape : route.stops.map(s => [s[1], s[2]]);
+      routePolylineLayer = L.polyline(line, { color: '#0f766e', weight: 5, opacity: 0.9, lineJoin: 'round' }).addTo(map);
+      route.stops.forEach((s, i) => {
+        const end = i === 0 || i === route.stops.length - 1;
+        routeStopsLayerGroup.addLayer(L.circleMarker([s[1], s[2]], {
+          radius: end ? 8 : 5,
+          fillColor: i === 0 ? '#10b981' : (end ? '#ef4444' : '#ffffff'),
+          color: '#0f766e',
+          weight: 2,
+          fillOpacity: 1
+        }).bindPopup(`<strong>${esc(s[0])}</strong><br>Stop ${i + 1} of ${route.stops.length}${s[3] ? `<br>Scheduled ${esc(s[3])}` : ''}`));
+      });
+      liveBuses.forEach(b => {
+        if (!b.lat || !b.lng) return;
+        const icon = L.divIcon({
+          className: 'live-route-bus-wrapper',
+          html: '<div class="live-route-bus-icon"><i class="fa-solid fa-bus"></i></div>',
+          iconSize: [44, 44],
+          iconAnchor: [22, 22]
+        });
+        routeStopsLayerGroup.addLayer(L.marker([b.lat, b.lng], { icon, zIndexOffset: 1500 })
+          .bindPopup(`<strong>${esc(b.busNo)} (LIVE)</strong><br>${esc(b.sourceName)} &rarr; ${esc(b.destinationName)}<br>Speed ${Math.round(b.speed || 0)} km/h`));
+      });
+      if (fit) {
+        const mobile = window.innerWidth <= 768;
+        const h = map.getSize ? map.getSize().y : window.innerHeight;
+        map.fitBounds(routePolylineLayer.getBounds(), mobile
+          ? { paddingTopLeft: [20, 20], paddingBottomRight: [20, Math.round(h * 0.55)] }
+          : { paddingTopLeft: [420, 40], paddingBottomRight: [40, 40] });
+      }
+    }
+
+    function renderDetail(route, liveBuses) {
+      const first = route.stops[0]?.[0] || '';
+      const last = route.stops[route.stops.length - 1]?.[0] || '';
+      detailBody.innerHTML = `
+        <div class="route-detail-head">
+          <span class="route-no ${route.kind === 'City' ? 'city' : ''}">${esc(route.no)}</span>
+          <div><strong>${esc(first)} &rarr; ${esc(last)}</strong>
+          <small>${esc(route.city ? `${route.city} · ` : '')}${esc(route.type || route.kind)} · ${route.trips} trips/day</small></div>
+        </div>
+        <h3>Live now <span>${liveBuses.length} bus${liveBuses.length === 1 ? '' : 'es'}</span></h3>
+        ${liveBuses.length ? `<ul class="route-live">${liveBuses.slice(0, 20).map((b, i) => `
+          <li><button type="button" data-bus="${i}">
+            <strong>${esc(b.busNo)}</strong>
+            <small>${esc(b.currentStop || 'In transit')} · ${Math.round(b.speed || 0)} km/h</small>
+          </button></li>`).join('')}</ul>` : '<p class="route-muted">No live bus found for this number right now. The line below is the scheduled route.</p>'}
+        <h3>Departures <span>from ${esc(first)}</span></h3>
+        <div class="route-deps">${route.deps.map(d => `<span>${esc(d)}</span>`).join('') || '<span>--</span>'}</div>
+        <h3>Stops <span>${route.stops.length}</span></h3>
+        <ol class="route-stops">${route.stops.map((s, i) => `
+          <li data-stop="${i}"><span>${esc(s[0])}</span><small>${esc(s[3] || '')}</small></li>`).join('')}</ol>
+        <p class="route-muted">Route and timings from the open APSRTC GTFS feed (reclaim.city). Live positions match buses by route number.</p>`;
+      detailBody.querySelectorAll('[data-bus]').forEach(btn => btn.addEventListener('click', () => {
+        const bus = liveBuses[Number(btn.dataset.bus)];
+        const full = allBuses.find(b => b.serviceDocId === bus.serviceDocId) || bus;
+        setOpen(false);
+        selectBus(full);
+      }));
+      detailBody.querySelectorAll('[data-stop]').forEach(li => li.addEventListener('click', () => {
+        const s = route.stops[Number(li.dataset.stop)];
+        map.flyTo([s[1], s[2]], 15, { duration: 0.8 });
+      }));
+    }
+
+    async function openRoute(id, fit = true) {
+      try {
+        const res = await fetch(`/api/routes/detail?id=${encodeURIComponent(id)}`);
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'failed');
+        if (id !== (currentRoute && currentRoute.id) && !fit) return;
+        currentRoute = data.route;
+        listView.hidden = true;
+        detailView.hidden = false;
+        renderDetail(data.route, data.liveBuses);
+        drawRoute(data.route, data.liveBuses, fit);
+        stopDetailRefresh();
+        detailTimer = setInterval(() => refreshLive(), 25000);
+      } catch (err) {
+        status.textContent = 'Could not load that route.';
+      }
+    }
+
+    async function refreshLive() {
+      if (!currentRoute || panel.hidden) return;
+      try {
+        const res = await fetch(`/api/routes/detail?id=${encodeURIComponent(currentRoute.id)}`);
+        const data = await res.json();
+        if (data.success && currentRoute && data.route.id === currentRoute.id) {
+          renderDetail(data.route, data.liveBuses);
+          drawRoute(data.route, data.liveBuses, false);
+        }
+      } catch (err) { /* keep last view */ }
+    }
+
+    toggle.addEventListener('click', () => setOpen(panel.hidden));
+    document.getElementById('closeRoutesPanel').addEventListener('click', () => setOpen(false));
+    document.getElementById('routeBack').addEventListener('click', () => {
+      stopDetailRefresh();
+      currentRoute = null;
+      clearRouteLayers();
+      detailView.hidden = true;
+      listView.hidden = false;
+    });
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(search, 250);
+    });
+    chips.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-city]');
+      if (!btn) return;
+      city = btn.dataset.city;
+      chips.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+      search();
+    });
+    results.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-id]');
+      if (btn) openRoute(btn.dataset.id);
+    });
+  }
+
+  function setupRiderSearch() {
+    const panel = document.getElementById('riderSearchPanel');
+    const toggle = document.getElementById('riderSearchBtn');
+    const status = document.getElementById('riderSearchStatus');
+    const fields = ['riderFrom', 'riderTo'].map(id => ({
+      input: document.getElementById(id),
+      options: document.getElementById(`${id}Options`),
+      selected: null,
+      matches: [],
+      timer: null,
+      version: 0
+    }));
+
+    function setPanelOpen(open) {
+      if (open) {
+        document.getElementById('fleetDrawer').classList.remove('open');
+        document.getElementById('busDetailDrawer').classList.remove('open');
+        document.body.classList.remove('drawer-open');
+        stopSelectedBusLivePoll();
+        clearRouteLayers();
+        selectedBus = null;
+      }
+      panel.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+    }
+
+    toggle.addEventListener('click', () => setPanelOpen(panel.hidden));
+    document.getElementById('editRiderFilter').addEventListener('click', () => setPanelOpen(true));
+    document.getElementById('closeRiderSearch').addEventListener('click', () => setPanelOpen(false));
+
+    fields.forEach(field => {
+      field.input.addEventListener('input', () => {
+        field.selected = null;
+        if (field.input.id === 'riderFrom') document.getElementById('riderStopInfo').textContent = '';
+        field.options.hidden = true;
+        clearTimeout(field.timer);
+        const version = ++field.version;
+        const query = field.input.value.trim();
+        if (query.length < 2) return;
+        field.timer = setTimeout(async () => {
+          try {
+            const res = await fetch(`/api/stops?search=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Stop search failed');
+            if (version !== field.version) return;
+            field.matches = data.stops;
+            field.options.replaceChildren();
+            data.stops.forEach(stop => {
+              const option = document.createElement('option');
+              option.value = stop.id;
+              option.textContent = `${[stop.name, stop.mandal, stop.district].filter(Boolean).join(' - ')} (${stop.id})`;
+              field.options.appendChild(option);
+            });
+            field.options.hidden = data.stops.length === 0;
+            status.textContent = data.stops.length ? 'Select a matching stop (up to 30 shown).' : 'No matching stops found.';
+          } catch (err) {
+            if (version !== field.version) return;
+            console.error('Stop search failed:', err);
+            status.textContent = 'Could not load stops. Please try again.';
+          }
+        }, 250);
+      });
+      field.options.addEventListener('change', () => {
+        field.selected = field.matches.find(stop => stop.id === field.options.value) || null;
+        if (!field.selected) return;
+        field.input.value = [field.selected.name, field.selected.mandal, field.selected.district].filter(Boolean).join(' - ');
+        field.options.hidden = true;
+        if (field.input.id === 'riderFrom') {
+          document.getElementById('riderStopInfo').textContent = `Mapped location: ${field.selected.lat.toFixed(5)}, ${field.selected.lng.toFixed(5)}`;
+        }
+        status.textContent = '';
+      });
+    });
+
+    document.getElementById('swapStopsBtn').addEventListener('click', () => {
+      const [from, to] = fields;
+      [from.selected, to.selected] = [to.selected, from.selected];
+      [from.input.value, to.input.value] = [to.input.value, from.input.value];
+      document.getElementById('riderStopInfo').textContent = from.selected
+        ? `Mapped location: ${from.selected.lat.toFixed(5)}, ${from.selected.lng.toFixed(5)}`
+        : '';
+      fields.forEach(field => {
+        clearTimeout(field.timer);
+        field.version++;
+        field.options.hidden = true;
+      });
+    });
+
+    document.getElementById('clearRiderSearch').addEventListener('click', () => {
+      riderRequestVersion++;
+      riderFilter = null;
+      document.getElementById('riderFilterSummary').hidden = true;
+      document.getElementById('riderStopInfo').textContent = '';
+      fields.forEach(field => {
+        clearTimeout(field.timer);
+        field.version++;
+        field.selected = null;
+        field.input.value = '';
+        field.options.hidden = true;
+      });
+      if (riderStopMarker) {
+        map.removeLayer(riderStopMarker);
+        riderStopMarker = null;
+      }
+      status.textContent = 'Stop and trip filter cleared.';
+      applyFilters();
+    });
+
+    function saveRecent(filter) {
+      const item = {
+        from: filter.from,
+        to: filter.to || null
+      };
+      const key = JSON.stringify([item.from.id, item.to?.id || '']);
+      const list = loadRecents().filter(r => JSON.stringify([r.from.id, r.to?.id || '']) !== key);
+      list.unshift(item);
+      try { localStorage.setItem('apsrtcRecentSearches', JSON.stringify(list.slice(0, 5))); } catch (e) { /* storage unavailable */ }
+      renderRecents();
+    }
+
+    function loadRecents() {
+      try {
+        const list = JSON.parse(localStorage.getItem('apsrtcRecentSearches') || '[]');
+        return Array.isArray(list) ? list.filter(r => r && r.from && r.from.id) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function renderRecents() {
+      const box = document.getElementById('recentSearches');
+      const list = loadRecents();
+      box.replaceChildren();
+      box.hidden = list.length === 0;
+      list.forEach(r => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = r.to ? `${r.from.name} → ${r.to.name}` : r.from.name;
+        btn.title = btn.textContent;
+        btn.addEventListener('click', () => {
+          const [from, to] = fields;
+          from.selected = r.from;
+          from.input.value = r.from.name;
+          to.selected = r.to;
+          to.input.value = r.to ? r.to.name : '';
+          document.getElementById('riderStopInfo').textContent = '';
+          fields.forEach(f => { f.options.hidden = true; });
+          document.getElementById('riderSearchForm').requestSubmit();
+        });
+        box.appendChild(btn);
+      });
+    }
+
+    renderRecents();
+    saveRecentSearch = saveRecent;
+
+    document.getElementById('nearMeBtn').addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        status.textContent = 'Location is not available in this browser.';
+        return;
+      }
+      status.textContent = 'Finding stops near you...';
+      navigator.geolocation.getCurrentPosition(async pos => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const res = await fetch(`/api/stops/nearby?lat=${latitude}&lng=${longitude}`);
+          const data = await res.json();
+          if (!res.ok || !data.success) throw new Error(data.error || 'Nearby search failed');
+          const from = fields[0];
+          from.version++;
+          from.selected = null;
+          from.input.value = '';
+          from.matches = data.stops;
+          from.options.replaceChildren();
+          data.stops.forEach(stop => {
+            const option = document.createElement('option');
+            option.value = stop.id;
+            option.textContent = `${stop.name} - ${stop.distanceKm < 1 ? Math.round(stop.distanceKm * 1000) + ' m' : stop.distanceKm.toFixed(1) + ' km'}`;
+            from.options.appendChild(option);
+          });
+          from.options.hidden = data.stops.length === 0;
+          status.textContent = data.stops.length ? 'Select your nearest stop as the starting point.' : 'No mapped stops within 3 km.';
+        } catch (err) {
+          console.error('Nearby stops failed:', err);
+          status.textContent = 'Could not find nearby stops.';
+        }
+      }, () => {
+        status.textContent = 'Location permission denied or unavailable.';
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    });
+
+    document.getElementById('riderSearchForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const [from, to] = fields;
+      if (!from.selected || (to.input.value.trim() && !to.selected)) {
+        status.textContent = 'Please select a stop from each suggestion list.';
+        return;
+      }
+      if (to.selected && from.selected.linkId === to.selected.linkId) {
+        status.textContent = 'Choose two different stops.';
+        return;
+      }
+      const filter = { from: from.selected, to: to.selected, busIds: new Set() };
+      await updateRiderFilter(filter, true);
+    });
+  }
+
+  updateRiderFilter = async function(filter, showResults = false) {
+    const version = ++riderRequestVersion;
+    const status = document.getElementById('riderSearchStatus');
+    const params = filter.to
+      ? new URLSearchParams({ from: filter.from.id, to: filter.to.id })
+      : new URLSearchParams({ id: filter.from.id });
+    const endpoint = filter.to ? '/api/buses/between' : '/api/stops/buses';
+    status.textContent = 'Searching active trips...';
+    try {
+      const res = await fetch(`${endpoint}?${params}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Trip search failed');
+      if (version !== riderRequestVersion) return;
+      if (!showResults && !document.getElementById('riderSearchPanel').hidden) return;
+      filter.busIds = new Set(data.buses.map(bus => bus.serviceDocId));
+      riderFilter = filter;
+      document.getElementById('riderFilterText').textContent = filter.to
+        ? `${filter.from.name} → ${filter.to.name}. Active trips only; check stop status.`
+        : `Trips serving ${filter.from.name}. Active trips only; check stop status.`;
+      document.getElementById('riderFilterSummary').hidden = false;
+      status.textContent = `${data.count} active trips match. Routes may have already passed these stops; check each bus for details.`;
+      applyFilters();
+      if (showResults) {
+        saveRecentSearch(filter);
+        if (riderStopMarker) map.removeLayer(riderStopMarker);
+        const label = document.createElement('strong');
+        label.textContent = [filter.from.name, filter.from.mandal, filter.from.district].filter(Boolean).join(' - ');
+        riderStopMarker = L.marker([filter.from.lat, filter.from.lng]).addTo(map).bindPopup(label);
+        if (window.innerWidth <= 768) {
+          const point = map.project([filter.from.lat, filter.from.lng], 13);
+          const offset = L.point(point.x, point.y + Math.round(map.getSize().y * 0.22));
+          map.setView(map.unproject(offset, 13), 13);
+        } else {
+          map.setView([filter.from.lat, filter.from.lng], 13);
+        }
+        document.getElementById('riderSearchPanel').hidden = true;
+        document.getElementById('riderSearchBtn').setAttribute('aria-expanded', 'false');
+        document.getElementById('fleetDrawer').classList.add('open');
+        document.getElementById('busDetailDrawer').classList.remove('open');
+        stopSelectedBusLivePoll();
+        clearRouteLayers();
+        selectedBus = null;
+        document.body.classList.add('drawer-open');
+      }
+    } catch (err) {
+      if (version !== riderRequestVersion) return;
+      console.error('Trip search failed:', err);
+      status.textContent = 'Could not search trips. Please try again.';
+      if (!showResults) {
+        document.getElementById('riderFilterText').textContent = 'Could not refresh trip results. Edit or clear the filter.';
+      }
+    }
+  };
+
   // Drawer & State controls
   const fleetDrawer = document.getElementById('fleetDrawer');
   const busDetailDrawer = document.getElementById('busDetailDrawer');
@@ -179,6 +652,8 @@ function setupEventListeners() {
   function syncDrawerState() {
     const isAnyOpen = (fleetDrawer && fleetDrawer.classList.contains('open')) ||
                       (busDetailDrawer && busDetailDrawer.classList.contains('open'));
+    const listBtn = document.getElementById('toggleListBtn');
+    if (listBtn && fleetDrawer) listBtn.setAttribute('aria-expanded', String(fleetDrawer.classList.contains('open')));
     if (isAnyOpen) {
       document.body.classList.add('drawer-open');
     } else {
@@ -201,8 +676,10 @@ function setupEventListeners() {
     toggleListBtn.addEventListener('click', () => {
       if (fleetDrawer) {
         fleetDrawer.classList.toggle('open');
-        if (fleetDrawer.classList.contains('open') && busDetailDrawer) {
-          busDetailDrawer.classList.remove('open');
+        if (fleetDrawer.classList.contains('open')) {
+          document.getElementById('riderSearchPanel').hidden = true;
+          document.getElementById('riderSearchBtn').setAttribute('aria-expanded', 'false');
+          if (busDetailDrawer) busDetailDrawer.classList.remove('open');
         }
       }
       syncDrawerState();
@@ -375,6 +852,7 @@ async function fetchLiveBuses(silent = false) {
 
     if (data.success && Array.isArray(data.buses)) {
       allBuses = data.buses;
+      if (data.filters) knownFilters = data.filters;
       const liveGpsCount = allBuses.filter(b => b.isLiveGps).length;
       if (statusText) statusText.innerText = `${allBuses.length} Buses (${liveGpsCount} Live GPS Fixes)`;
       const statTotalBuses = document.getElementById('statTotalBuses');
@@ -385,6 +863,7 @@ async function fetchLiveBuses(silent = false) {
 
       populateFilterDropdowns();
       applyFilters();
+      if (riderFilter && document.getElementById('riderSearchPanel').hidden) updateRiderFilter(riderFilter);
     }
   } catch (err) {
     console.error('Failed to fetch buses:', err);
@@ -434,8 +913,8 @@ function populateFilterDropdowns() {
   const currentDepot = depotFilter.value;
   const currentType = typeFilter.value;
 
-  const depots = new Set();
-  const types = new Set();
+  const depots = new Set(knownFilters.depots);
+  const types = new Set(knownFilters.serviceTypes);
 
   for (const b of allBuses) {
     if (b.depotName) depots.add(b.depotName);
@@ -472,6 +951,7 @@ function applyFilters() {
   const selectedType = document.getElementById('typeFilter').value;
 
   filteredBuses = allBuses.filter(b => {
+    if (riderFilter && !riderFilter.busIds.has(b.serviceDocId)) return false;
     if (selectedDepot && b.depotName !== selectedDepot) return false;
     if (selectedType && b.serviceType !== selectedType) return false;
 
@@ -732,6 +1212,9 @@ function selectBus(bus, flyTo = true) {
 
   updateBusDetailDrawerUI(bus);
   startSelectedBusLivePoll(bus.serviceDocId);
+  if (typeof window.traceFullRoute === 'function' && bus.serviceDocId) {
+    Promise.resolve(window.traceFullRoute(bus.serviceDocId)).catch(() => {});
+  }
 }
 
 function updateBusDetailDrawerUI(bus) {

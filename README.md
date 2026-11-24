@@ -20,6 +20,7 @@ Built using Antigravity
   - Color-coded by service type (Express, City Ordinary, Super Luxury, Pallevelugu, Garuda, Indra, Amaravathi, Electric buses).
   - Search by Bus Number, OPRS Service Number, Route Name, Depot, or Stop.
   - Filter by Depot and Service Type.
+  - **Stops & trips**: search the mapped stop catalog, view active trips serving a stop, or find trips that visit two selected stops in order. Select a trip and trace its route for stop status.
   - Auto-refresh countdown with live polling every 25 seconds.
   - **Trace Route & Waypoints**: Click any bus to view its real-time route polyline, departed stops, ETAs, and driver contact info.
 - **Command-Line Interface (CLI)**: Inspect fleet stats, list active buses, trace specific bus routes, or export live coordinates to standard **GeoJSON**.
@@ -97,6 +98,23 @@ apsrtc-live-bus-tracker/
   - Query parameters: `?depot=<name>`, `?type=<serviceType>`, `?search=<text>`
 - `GET /api/buses/stats` — Summary of active fleet count, depots, routes, and last sync timestamp.
 - `GET /api/buses/route?docId=<serviceDocId>` — Full route polyline and stop-by-stop departure/ETA status for a bus.
+- `GET /api/stops?search=<text>` — Up to 30 matching mapped stops (minimum 2 characters).
+- `GET /api/stops/nearby?lat=<lat>&lng=<lng>` — Up to 8 mapped stops within 3 km, nearest first.
+- `GET /api/stops/buses?id=<placeId>` — Active trips whose available waypoint list includes the stop.
+- `GET /api/buses/between?from=<placeId>&to=<placeId>` — Active trips visiting the selected stops in order.
 - `GET /api/buses/geojson` — Standard GeoJSON `FeatureCollection` for QGIS, Mapbox, or ArcGIS.
 - `POST /api/buses/refresh` — Triggers an immediate cache refresh.
 
+Stop and trip search uses the current active fleet and available mapped waypoint IDs. It is not a timetable: trips may already have passed a stop, and missing waypoints, future services, seat availability, and transfers are not included. Check each bus's traced route for available stop status and ETAs.
+
+
+## Bus routes (city and intercity)
+
+The **City Buses** tool searches ~5,000 APSRTC routes by number or place, with city filters
+(Visakhapatnam, Vijayawada, ...). Selecting a route draws its path and stops on the map, lists
+departures and stops, and shows buses live on that route number. Selecting a bus now auto-traces its route.
+
+- `GET /api/routes?q=&city=&kind=` and `GET /api/routes/detail?id=`
+- Data: `data/apsrtc-routes.json.gz`, built with `npm run build-routes -- <unzipped-gtfs-dir>` from the
+  open [reclaimchennai/apsrtc](https://github.com/reclaimchennai/apsrtc) GTFS feed (ODbL licence; attribution required).
+- Dedicated city-route data in the feed is mostly Visakhapatnam and Vijayawada.

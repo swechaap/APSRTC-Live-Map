@@ -11,10 +11,18 @@ const {
   getApsrtcDates
 } = require('./apsrtcApi');
 
+const fs = require('fs');
+const path = require('path');
+
+const FILTERS_FILE = path.join(__dirname, '../../cache/filters.json');
+
 class BusTracker {
   constructor() {
     this.placesMap = new Map();
+    this.riderStopsById = new Map();
     this.busesCache = [];
+    this.knownFilters = { depots: new Set(), serviceTypes: new Set() };
+    this.tripStopsByBus = new Map();
     this.cachedTripDocs = null;
     this.lastTripSync = null;
     this.lastSync = null;
@@ -27,8 +35,16 @@ class BusTracker {
    */
   async init() {
     console.log('[BusTracker] Initializing stop database...');
+    try {
+      const saved = JSON.parse(fs.readFileSync(FILTERS_FILE, 'utf8'));
+      (saved.depots || []).forEach(d => this.knownFilters.depots.add(d));
+      (saved.serviceTypes || []).forEach(t => this.knownFilters.serviceTypes.add(t));
+    } catch (err) {
+      // No saved filters yet
+    }
     const places = await fetchMappedPlaces();
     this.placesMap.clear();
+    this.riderStopsById.clear();
 
     for (const p of places) {
       const lat = parseFloat(p.latitude);
@@ -37,6 +53,7 @@ class BusTracker {
 
       const info = {
         id: String(p.placeId),
+        linkId: String(p.linkPlaceId || p.placeId),
         name: p.placeName || '',
         lat,
         lng,
@@ -45,9 +62,11 @@ class BusTracker {
       };
 
       this.placesMap.set(String(p.placeId), info);
-      if (p.linkPlaceId) {
-        this.placesMap.set(String(p.linkPlaceId), info);
-      }
+      if (p.linkPlaceId) this.placesMap.set(String(p.linkPlaceId), info);
+      this.riderStopsById.set(info.id, info);
+    }
+    for (const info of this.riderStopsById.values()) {
+      if (!this.riderStopsById.has(info.linkId)) this.riderStopsById.set(info.linkId, info);
     }
     console.log(`[BusTracker] Successfully indexed ${this.placesMap.size} valid GPS stops.`);
 
@@ -90,7 +109,7 @@ class BusTracker {
 
       let tripDocsPromise;
       if (needsTripRefresh || !this.cachedTripDocs || this.cachedTripDocs.length === 0) {
-        tripDocsPromise = fetchActiveTrips(null, 12000).then(docs => {
+        tripDocsPromise = this.fetchTripsForJourneyDates().then(docs => {
           if (docs && docs.length > 0) {
             this.cachedTripDocs = docs;
             this.lastTripSync = Date.now();
@@ -115,6 +134,7 @@ class BusTracker {
       });
 
       const mapped = [];
+      const tripStopsByBus = new Map();
       const stopOccupancy = new Map();
 
       for (const doc of tripDocs) {
@@ -201,6 +221,7 @@ class BusTracker {
         // Waypoint list if present
         const wayPointString = f.wayPointString?.stringValue || '';
         const totalWaypoints = wayPointString ? wayPointString.split(',').length : null;
+        tripStopsByBus.set(serviceDocId, wayPointString.split(',').map(id => id.trim()).filter(Boolean));
 
         mapped.push({
           id: serviceDocId,
@@ -234,6 +255,8 @@ class BusTracker {
       }
 
       this.busesCache = mapped;
+      this.rememberFilters(mapped);
+      this.tripStopsByBus = tripStopsByBus;
       this.lastSync = new Date();
       const liveCount = mapped.filter(b => b.isLiveGps).length;
       console.log(`[BusTracker] Synced ${mapped.length} active buses (${liveCount} with real-time GPS movement) at ${this.lastSync.toLocaleTimeString()}`);
@@ -244,10 +267,113 @@ class BusTracker {
   }
 
   /**
+   * Trips that began before midnight keep yesterday's journeyDate, so in the
+   * early hours we also fetch the previous day's running trips.
+   */
+  async fetchTripsForJourneyDates() {
+    const now = new Date();
+    const dates = [null];
+    if (now.getHours() < 6) {
+      dates.push(getApsrtcDates(new Date(now.getTime() - 24 * 60 * 60 * 1000)).journeyDate);
+    }
+    const settled = await Promise.allSettled(dates.map(d => fetchActiveTrips(d, 12000)));
+    const seen = new Set();
+    const docs = [];
+    for (const r of settled) {
+      if (r.status !== 'fulfilled') continue;
+      for (const doc of r.value) {
+        if (seen.has(doc.name)) continue;
+        seen.add(doc.name);
+        docs.push(doc);
+      }
+    }
+    if (docs.length === 0 && settled.every(r => r.status === 'rejected')) throw settled[0].reason;
+    return docs;
+  }
+
+  /**
+   * Remembers every depot and service type ever seen so the filters stay complete
+   * even when few buses are running (e.g. late at night).
+   */
+  rememberFilters(buses) {
+    let changed = false;
+    for (const b of buses) {
+      if (b.depotName && !this.knownFilters.depots.has(b.depotName)) {
+        this.knownFilters.depots.add(b.depotName);
+        changed = true;
+      }
+      if (b.serviceType && !this.knownFilters.serviceTypes.has(b.serviceType)) {
+        this.knownFilters.serviceTypes.add(b.serviceType);
+        changed = true;
+      }
+    }
+    if (changed) {
+      try {
+        fs.writeFileSync(FILTERS_FILE, JSON.stringify(this.getKnownFilters()));
+      } catch (err) {
+        console.warn('[BusTracker] Could not persist filters:', err.message);
+      }
+    }
+  }
+
+  getKnownFilters() {
+    return {
+      depots: [...this.knownFilters.depots].sort(),
+      serviceTypes: [...this.knownFilters.serviceTypes].sort()
+    };
+  }
+
+  /**
    * Returns current active buses
    */
   getActiveBuses() {
     return this.busesCache;
+  }
+
+  searchStops(query) {
+    const text = query.trim().toLowerCase();
+    const unique = new Map();
+    for (const place of this.riderStopsById.values()) {
+      if (place.name.toLowerCase().includes(text)) unique.set(place.id, place);
+    }
+    return [...unique.values()]
+      .sort((a, b) => a.name.localeCompare(b.name) || a.district.localeCompare(b.district))
+      .slice(0, 30);
+  }
+
+  nearbyStops(lat, lng, limit = 8, maxKm = 3) {
+    const kmPerDeg = 111;
+    const cosLat = Math.cos(lat * Math.PI / 180);
+    const seen = new Set();
+    const found = [];
+    for (const stop of this.riderStopsById.values()) {
+      if (seen.has(stop.id)) continue;
+      seen.add(stop.id);
+      const km = Math.hypot((stop.lat - lat) * kmPerDeg, (stop.lng - lng) * kmPerDeg * cosLat);
+      if (km <= maxKm) found.push({ ...stop, distanceKm: km });
+    }
+    return found.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, limit);
+  }
+
+  getStopBuses(stopId) {
+    const stop = this.riderStopsById.get(stopId);
+    if (!stop) return null;
+    return this.busesCache.filter(bus =>
+      (this.tripStopsByBus.get(bus.serviceDocId) || [])
+        .some(id => this.riderStopsById.get(id)?.linkId === stop.linkId)
+    );
+  }
+
+  getBusesBetweenStops(fromId, toId) {
+    const from = this.riderStopsById.get(fromId);
+    const to = this.riderStopsById.get(toId);
+    if (!from || !to || from.linkId === to.linkId) return null;
+    return this.busesCache.filter(bus => {
+      const stops = this.tripStopsByBus.get(bus.serviceDocId) || [];
+      const fromIndex = stops.findIndex(id => this.riderStopsById.get(id)?.linkId === from.linkId);
+      return fromIndex !== -1 && stops.slice(fromIndex + 1)
+        .some(id => this.riderStopsById.get(id)?.linkId === to.linkId);
+    });
   }
 
   /**

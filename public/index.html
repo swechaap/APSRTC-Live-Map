@@ -77,6 +77,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="theme.css" />
   <style>
     /* Developed By Section */
 .developed-by-section {
@@ -204,11 +205,6 @@
         </div>
 
         <div class="header-actions">
-          <button id="toggleListBtn" class="action-btn secondary" title="Toggle Fleet List">
-            <i class="fa-solid fa-list-ul"></i>
-            <span>Buses</span>
-          </button>
-
           <button id="infoBtn" class="action-btn secondary icon-btn" title="About APSRTC Live Bus Tracker" aria-label="About Information">
             <i class="fa-solid fa-circle-info"></i>
           </button>
@@ -218,11 +214,15 @@
       <div class="header-controls">
         <div class="search-box">
           <i class="fa-solid fa-magnifying-glass"></i>
-          <input type="text" id="searchInput" placeholder="Search Bus No, OPRS, Route, Stop..." />
+          <input type="text" id="searchInput" placeholder="Bus, OPRS, route or current stop" aria-label="Search buses" />
           <button id="clearSearch" class="clear-btn" title="Clear search" style="display:none;">&times;</button>
         </div>
 
-        <div class="filter-group">
+        <button id="filtersToggle" class="action-btn secondary filters-toggle" type="button" aria-expanded="false" aria-controls="filterGroup">
+          <i class="fa-solid fa-sliders"></i> Filters
+        </button>
+
+        <div class="filter-group" id="filterGroup">
           <select id="depotFilter">
             <option value="">All Depots</option>
           </select>
@@ -246,6 +246,61 @@
 
       <!-- Interactive Leaflet Map -->
       <div id="map"></div>
+
+      <nav class="bottom-nav" aria-label="Main actions">
+        <button id="riderSearchBtn" type="button" aria-expanded="false" aria-controls="riderSearchPanel">
+          <i class="fa-solid fa-route"></i><span>Plan trip</span>
+        </button>
+        <button id="routesBtn" type="button" aria-expanded="false" aria-controls="routesPanel">
+          <i class="fa-solid fa-hashtag"></i><span>City Buses</span>
+        </button>
+        <button id="toggleListBtn" type="button" title="Toggle Fleet List">
+          <i class="fa-solid fa-bus-simple"></i><span>Buses</span>
+        </button>
+      </nav>
+      <section class="rider-search-panel routes-panel" id="routesPanel" aria-label="City buses" hidden>
+        <div class="rider-panel-heading">
+          <h2>City Buses</h2>
+          <button class="close-drawer-btn" id="closeRoutesPanel" type="button" aria-label="Close city buses">&times;</button>
+        </div>
+        <div id="routesListView">
+          <input id="routeQuery" type="search" autocomplete="off" placeholder="Route no. (e.g. 28B4, 1032) or place" aria-label="Search routes by number or place" />
+          <div id="routeCityChips" class="route-chips" aria-label="Filter by city"></div>
+          <p id="routeStatus" role="status" aria-live="polite"></p>
+          <ul id="routeResults" class="route-results"></ul>
+        </div>
+        <div id="routeDetailView" hidden>
+          <button type="button" id="routeBack" class="route-back"><i class="fa-solid fa-arrow-left"></i> All routes</button>
+          <div id="routeDetailBody"></div>
+        </div>
+      </section>
+
+      <section class="rider-search-panel" id="riderSearchPanel" aria-label="Find stops and trips" hidden>
+        <div class="rider-panel-heading">
+          <h2>Find stops &amp; trips</h2>
+          <button class="close-drawer-btn" id="closeRiderSearch" type="button" aria-label="Close stop and trip search">&times;</button>
+        </div>
+        <button type="button" id="nearMeBtn" class="near-me-btn">
+          <i class="fa-solid fa-location-crosshairs"></i> Stops near me
+        </button>
+        <div id="recentSearches" class="recent-searches" hidden></div>
+        <form id="riderSearchForm">
+          <label for="riderFrom">Stop or origin</label>
+          <input id="riderFrom" type="search" autocomplete="off" placeholder="Type at least 2 letters" aria-describedby="riderSearchHint" />
+          <select id="riderFromOptions" size="4" aria-label="Matching stops or origins" hidden></select>
+          <p id="riderStopInfo"></p>
+          <label for="riderTo">Destination <span>(optional)</span></label>
+          <input id="riderTo" type="search" autocomplete="off" placeholder="Leave empty to find buses serving a stop" />
+          <select id="riderToOptions" size="4" aria-label="Matching destinations" hidden></select>
+          <div class="rider-search-actions">
+            <button type="submit" class="action-btn">Find buses</button>
+            <button type="button" id="swapStopsBtn" class="action-btn secondary">Swap</button>
+            <button type="button" id="clearRiderSearch" class="action-btn secondary">Clear</button>
+          </div>
+        </form>
+        <p id="riderSearchHint">Choose a suggestion for each stop. Results include active trips serving the stop, not confirmed arrivals or available seats.</p>
+        <p id="riderSearchStatus" role="status" aria-live="polite"></p>
+      </section>
 
       <!-- Quick Stats Floating Bar -->
       <div class="floating-stats" id="floatingStats">
@@ -271,7 +326,7 @@
       </div>
 
       <!-- Floating Map Bus Colors Legend -->
-      <div class="map-legend" id="mapLegend">
+      <div class="map-legend collapsed" id="mapLegend">
         <div class="legend-header" id="toggleLegendBtn" title="Click to collapse / expand bus colors">
           <span class="legend-title"><i class="fa-solid fa-palette"></i> Bus Types &amp; Colors</span>
           <i class="fa-solid fa-chevron-down legend-toggle-icon"></i>
@@ -318,6 +373,11 @@
             <span class="d-stat-val" id="drawerStatSync">--:--</span>
             <span class="d-stat-lbl">Synced</span>
           </div>
+        </div>
+
+        <div class="rider-filter-summary" id="riderFilterSummary" hidden>
+          <span id="riderFilterText"></span>
+          <button type="button" id="editRiderFilter">Edit or clear</button>
         </div>
 
         <div class="drawer-content" id="busListContainer">
